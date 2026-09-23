@@ -1,0 +1,58 @@
+# Local/dev defaults only. Override secrets via environment / docker-compose for real deployments.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: asisya-postgres
+    environment:
+      POSTGRES_DB: asisya_catalog
+      POSTGRES_USER: asisya
+      # Demo password — CHANGE_ME_IN_PRODUCTION for any shared/public environment
+      POSTGRES_PASSWORD: CHANGE_ME_IN_PRODUCTION
+    ports:
+      - "5432:5432"
+    volumes:
+      - asisya_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asisya -d asisya_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: asisya-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=asisya_catalog;Username=asisya;Password=CHANGE_ME_IN_PRODUCTION
+      Jwt__Issuer: Asisya.Catalog
+      Jwt__Audience: Asisya.Catalog.Clients
+      # Demo JWT signing key — CHANGE_ME_IN_PRODUCTION (min ~32 chars)
+      Jwt__Key: CHANGE_ME_IN_PRODUCTION_USE_A_LONG_SECRET_32PLUS
+      Jwt__ExpirationMinutes: "120"
+    ports:
+      # Host 5192 -> container 8080 (8080 often reserved on Windows)
+      - "5192:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser on host must call the published API port
+        VITE_API_BASE_URL: http://localhost:5192
+    container_name: asisya-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  asisya_pgdata:

@@ -1,0 +1,12 @@
+@Asisya.Api_HostAddress = http://localhost:5192
+
+GET {{Asisya.Api_HostAddress}}/health
+
+###
+POST {{Asisya.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin123!"
+}
