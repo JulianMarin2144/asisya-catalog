@@ -48,5 +48,8 @@ appsettings.*.local.json
 node_modules/
 dist/
 
+# Enunciado de la prueba (documento privado del proceso)
+*.pdf
+
 # Configuracion local del editor
 .cursor/
