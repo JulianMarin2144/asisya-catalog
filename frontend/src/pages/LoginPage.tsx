@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { isAxiosError } from 'axios'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { getApiErrorMessage } from '../api/errors'
+import { useAuth } from '../auth/useAuth'
 
 export function LoginPage() {
   const { authenticated, login } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('Admin123!')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -19,10 +21,14 @@ export function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      await login(username, password)
+      await login(username.trim(), password)
       navigate('/products', { replace: true })
-    } catch {
-      setError('Credenciales inválidas o API no disponible.')
+    } catch (err) {
+      setError(
+        isAxiosError(err) && err.response?.status === 401
+          ? 'Usuario o contraseña incorrectos.'
+          : getApiErrorMessage(err, 'No se pudo iniciar sesión. Inténtalo de nuevo.'),
+      )
     } finally {
       setLoading(false)
     }
@@ -30,12 +36,19 @@ export function LoginPage() {
 
   return (
     <main className="page auth-page">
-      <form className="card form" onSubmit={onSubmit}>
+      <form className="card form" onSubmit={onSubmit} aria-describedby={error ? 'login-error' : undefined}>
         <h1>Asisya Catalog</h1>
         <p className="muted">Inicia sesión para gestionar productos</p>
         <label>
           Usuario
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            maxLength={64}
+            required
+            autoFocus
+          />
         </label>
         <label>
           Contraseña
@@ -47,16 +60,19 @@ export function LoginPage() {
             required
           />
         </label>
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p id="login-error" className="error" role="alert">
+            {error}
+          </p>
+        )}
         <button type="submit" disabled={loading}>
           {loading ? 'Entrando…' : 'Entrar'}
         </button>
-        <p className="muted small">
-          Demo: admin / Admin123! · API <code>{import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5192'}</code>
-        </p>
-        <Link to="/products" className="muted small" style={{ pointerEvents: 'none', opacity: 0.4 }}>
-          Rutas de productos protegidas
-        </Link>
+        {import.meta.env.DEV && (
+          <p className="muted small">
+            Demo: admin / Admin123! · API <code>{import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5192'}</code>
+          </p>
+        )}
       </form>
     </main>
   )

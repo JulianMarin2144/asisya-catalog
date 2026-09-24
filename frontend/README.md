@@ -25,3 +25,5 @@ Incluido en el `docker-compose.yml` de la raíz:
 
 - Usuario: `admin`
 - Password: `Admin123!`
+
+Solo existen si la API arranca con `SEED_DEFAULT_ADMIN=true` (lo activa el `.env` de demo de la raíz; ver README principal).

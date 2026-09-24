@@ -68,6 +68,28 @@ public sealed class ProductServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenTextOrPriceExceedsLimits_ThrowsBusinessException()
+    {
+        var categoryId = Guid.NewGuid();
+        _categories.Setup(x => x.ExistsAsync(categoryId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<BusinessException>(() => _sut.CreateAsync(new CreateProductDto
+        {
+            Name = new string('A', Product.NameMaxLength + 1), Price = 10, Stock = 1, CategoryId = categoryId
+        }));
+        await Assert.ThrowsAsync<BusinessException>(() => _sut.CreateAsync(new CreateProductDto
+        {
+            Name = "Blade", Description = new string('D', Product.DescriptionMaxLength + 1),
+            Price = 10, Stock = 1, CategoryId = categoryId
+        }));
+        await Assert.ThrowsAsync<BusinessException>(() => _sut.CreateAsync(new CreateProductDto
+        {
+            Name = "Blade", Price = Product.MaxPrice + 1, Stock = 1, CategoryId = categoryId
+        }));
+        _products.Verify(x => x.AddAsync(It.IsAny<Product>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenCategoryMissing_ThrowsBusinessException()
     {
         var categoryId = Guid.NewGuid();

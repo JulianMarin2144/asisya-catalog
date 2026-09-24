@@ -41,7 +41,9 @@ public static class DbSeeder
                 CreatedAtUtc = DateTime.UtcNow
             });
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded default user '{Username}'.", DefaultUsername);
+            logger.LogWarning(
+                "Seeded demo user '{Username}' with a well-known password. Set Seed:DefaultAdmin=false outside local demos.",
+                DefaultUsername);
         }
 
         await EnsureCategoryAsync(db, "SERVIDORES", "Infraestructura on-prem",

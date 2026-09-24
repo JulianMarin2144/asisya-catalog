@@ -32,7 +32,17 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
+        try
+        {
+            await _postgres.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "Integration tests need a running Docker engine accessible to the current user (Testcontainers starts PostgreSQL). " +
+                "Start Docker Desktop, or run only unit tests: dotnet test tests/Asisya.Application.Tests. Cause: " + ex.Message,
+                ex);
+        }
     }
 
     public new async Task DisposeAsync()
@@ -148,6 +158,72 @@ public sealed class CatalogApiIntegrationTests : IClassFixture<CustomWebApplicat
 
         var response = await _client.SendAsync(request);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/Products")]
+    [InlineData("/Products/00000000-0000-0000-0000-000000000001")]
+    [InlineData("/Category")]
+    public async Task Reads_WithoutToken_Return401(string path)
+    {
+        var response = await _client.GetAsync(path);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Responses_IncludeSecurityHeaders()
+    {
+        var response = await _client.GetAsync("/health");
+
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
+    }
+
+    [Fact]
+    public async Task CreateCategory_DuplicateName_Returns409_AndInvalidInput_Returns400()
+    {
+        SetBearer(await LoginAsync());
+        var body = new CreateCategoryDto
+        {
+            Name = $"DUP-{Guid.NewGuid():N}"[..12],
+            PhotoUrl = "https://cdn.example.com/dup.png"
+        };
+
+        (await _client.PostAsJsonAsync("/Category", body)).EnsureSuccessStatusCode();
+        var duplicate = await _client.PostAsJsonAsync("/Category", body);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, duplicate.StatusCode);
+
+        var invalidUrl = await _client.PostAsJsonAsync("/Category",
+            new CreateCategoryDto { Name = "BAD-URL", PhotoUrl = "not-a-url" });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, invalidUrl.StatusCode);
+
+        var tooLong = await _client.PostAsJsonAsync("/Product", new CreateProductDto
+        {
+            Name = new string('A', 201),
+            Price = 1,
+            Stock = 1,
+            CategoryId = Guid.NewGuid()
+        });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, tooLong.StatusCode);
+    }
+
+    [Fact]
+    public async Task Migrations_CreateTrigramIndexForProductSearch()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var connection = new NpgsqlConnection(_factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'products' AND indexname = 'IX_products_Name_trgm'",
+            connection);
+
+        var definition = (string?)await command.ExecuteScalarAsync();
+
+        Assert.NotNull(definition);
+        Assert.Contains("gin", definition);
+        Assert.Contains("gin_trgm_ops", definition);
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
     }
 
     [Fact]

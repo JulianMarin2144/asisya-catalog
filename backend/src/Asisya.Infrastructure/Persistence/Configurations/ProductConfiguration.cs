@@ -10,8 +10,8 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
     {
         builder.ToTable("products");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
-        builder.Property(x => x.Description).HasMaxLength(1000);
+        builder.Property(x => x.Name).HasMaxLength(Product.NameMaxLength).IsRequired();
+        builder.Property(x => x.Description).HasMaxLength(Product.DescriptionMaxLength);
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.Property(x => x.Stock).IsRequired();
         builder.Property(x => x.CreatedAtUtc).IsRequired();

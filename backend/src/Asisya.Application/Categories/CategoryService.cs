@@ -21,28 +21,23 @@ public sealed class CategoryService
 
     public async Task<CategoryDto> CreateAsync(CreateCategoryDto request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            throw new BusinessException("Category name is required.");
-        }
+        var name = request.Name?.Trim() ?? string.Empty;
+        var description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        var photoUrl = request.PhotoUrl?.Trim() ?? string.Empty;
 
-        if (string.IsNullOrWhiteSpace(request.PhotoUrl))
-        {
-            throw new BusinessException("Category photo URL is required.");
-        }
+        Validate(name, description, photoUrl);
 
-        var name = request.Name.Trim();
         if (await _categories.ExistsByNameAsync(name, cancellationToken))
         {
-            throw new BusinessException($"Category '{name}' already exists.");
+            throw new ConflictException($"Category '{name}' already exists.");
         }
 
         var category = new Category
         {
             Id = Guid.NewGuid(),
             Name = name,
-            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
-            PhotoUrl = request.PhotoUrl.Trim(),
+            Description = description,
+            PhotoUrl = photoUrl,
             CreatedAtUtc = DateTime.UtcNow
         };
 
@@ -66,5 +61,40 @@ public sealed class CategoryService
         var items = categories.Select(CategoryMapper.ToDto).ToList();
         _cache.Set(ListCacheKey, (IReadOnlyList<CategoryDto>)items, ListCacheDuration);
         return items;
+    }
+
+    private static void Validate(string name, string? description, string photoUrl)
+    {
+        if (name.Length == 0)
+        {
+            throw new BusinessException("Category name is required.");
+        }
+
+        if (name.Length > Category.NameMaxLength)
+        {
+            throw new BusinessException($"Category name cannot exceed {Category.NameMaxLength} characters.");
+        }
+
+        if (description?.Length > Category.DescriptionMaxLength)
+        {
+            throw new BusinessException(
+                $"Category description cannot exceed {Category.DescriptionMaxLength} characters.");
+        }
+
+        if (photoUrl.Length == 0)
+        {
+            throw new BusinessException("Category photo URL is required.");
+        }
+
+        if (photoUrl.Length > Category.PhotoUrlMaxLength)
+        {
+            throw new BusinessException($"Category photo URL cannot exceed {Category.PhotoUrlMaxLength} characters.");
+        }
+
+        if (!Uri.TryCreate(photoUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+        {
+            throw new BusinessException("Category photo URL must be an absolute http(s) URL.");
+        }
     }
 }

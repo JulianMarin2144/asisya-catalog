@@ -1,4 +1,5 @@
-# Local/dev defaults only. Override secrets via environment / docker-compose for real deployments.
+# Secure by default: secrets are required (no fallback values) and the demo admin user and Swagger are off.
+# For a local demo: copy .env.example to .env, which sets demo secrets and enables both switches.
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,10 +7,10 @@ services:
     environment:
       POSTGRES_DB: asisya_catalog
       POSTGRES_USER: asisya
-      # Demo password — CHANGE_ME_IN_PRODUCTION for any shared/public environment
-      POSTGRES_PASSWORD: CHANGE_ME_IN_PRODUCTION
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD - see .env.example}
     ports:
-      - "5432:5432"
+      # Only reachable from this machine
+      - "127.0.0.1:5432:5432"
     volumes:
       - asisya_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -24,14 +25,16 @@ services:
       dockerfile: Dockerfile
     container_name: asisya-api
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=asisya_catalog;Username=asisya;Password=CHANGE_ME_IN_PRODUCTION
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=asisya_catalog;Username=asisya;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD - see .env.example}
       Jwt__Issuer: Asisya.Catalog
       Jwt__Audience: Asisya.Catalog.Clients
-      # Demo JWT signing key — CHANGE_ME_IN_PRODUCTION (min ~32 chars)
-      Jwt__Key: CHANGE_ME_IN_PRODUCTION_USE_A_LONG_SECRET_32PLUS
+      Jwt__Key: ${JWT_KEY:?Set JWT_KEY (32+ chars) - see .env.example}
       Jwt__ExpirationMinutes: "120"
+      Cors__AllowedOrigins__0: http://localhost:5173
+      Seed__DefaultAdmin: ${SEED_DEFAULT_ADMIN:-false}
+      Swagger__Enabled: ${SWAGGER_ENABLED:-false}
     ports:
       # Host 5192 -> container 8080 (8080 often reserved on Windows)
       - "5192:8080"

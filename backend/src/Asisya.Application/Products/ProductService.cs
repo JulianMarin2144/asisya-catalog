@@ -62,7 +62,7 @@ public sealed class ProductService
 
     public async Task<ProductDto> CreateAsync(CreateProductDto request, CancellationToken cancellationToken = default)
     {
-        await ValidateAsync(request.Name, request.Price, request.Stock, request.CategoryId, cancellationToken);
+        await ValidateAsync(request.Name, request.Description, request.Price, request.Stock, request.CategoryId, cancellationToken);
 
         var product = new Product
         {
@@ -158,7 +158,7 @@ public sealed class ProductService
 
     public async Task<ProductDto> UpdateAsync(Guid id, UpdateProductDto request, CancellationToken cancellationToken = default)
     {
-        await ValidateAsync(request.Name, request.Price, request.Stock, request.CategoryId, cancellationToken);
+        await ValidateAsync(request.Name, request.Description, request.Price, request.Stock, request.CategoryId, cancellationToken);
 
         var product = await _products.GetByIdAsync(id, cancellationToken);
         if (product is null)
@@ -192,7 +192,8 @@ public sealed class ProductService
     }
 
     private async Task ValidateAsync(
-        string name,
+        string? name,
+        string? description,
         decimal price,
         int stock,
         Guid categoryId,
@@ -203,9 +204,25 @@ public sealed class ProductService
             throw new BusinessException("Product name is required.");
         }
 
+        if (name.Trim().Length > Product.NameMaxLength)
+        {
+            throw new BusinessException($"Product name cannot exceed {Product.NameMaxLength} characters.");
+        }
+
+        if (description?.Trim().Length > Product.DescriptionMaxLength)
+        {
+            throw new BusinessException(
+                $"Product description cannot exceed {Product.DescriptionMaxLength} characters.");
+        }
+
         if (price <= 0)
         {
             throw new BusinessException("Product price must be greater than zero.");
+        }
+
+        if (price > Product.MaxPrice)
+        {
+            throw new BusinessException($"Product price cannot exceed {Product.MaxPrice}.");
         }
 
         if (stock < 0)

@@ -28,6 +28,9 @@ React SPA  --JWT Bearer-->  Api  -->  Application  -->  Domain
 - **Sin Redis en el MVP**: un solo nodo / demo local; `IMemoryCache` bastaría si hiciera falta en proceso. Redis se documenta como siguiente paso al escalar horizontalmente (ver abajo).
 - **Mapping DTO explícito** (sin AutoMapper complejo): control total y menos magia en una prueba corta.
 - **DbContext como Unit of Work** + repositorios simples: batch insert con `AddRange` + `SaveChangesAsync` por lote de 5000 y `ChangeTracker.Clear()`.
+- **Búsqueda con índice trigram (`pg_trgm` + GIN)** sobre `products.Name`: `ILIKE '%term%'` usa `Bitmap Index Scan` en lugar de recorrer toda la tabla. El B-tree se mantiene para `ORDER BY Name`.
+- **Validación en Application con límites definidos en Domain** (`Product.NameMaxLength`, etc.): la misma constante alimenta la configuración de EF y las reglas de negocio, así que una entrada fuera de límites devuelve 400 y nunca llega a la base como 500.
+- **Errores tipados → Problem Details**: `BusinessException` → 400, `NotFoundException` → 404, `ConflictException` → 409 (nombre de categoría duplicado, incluida la carrera contra el índice único).
 
 ---
 
@@ -40,7 +43,7 @@ React SPA  --JWT Bearer-->  Api  -->  Application  -->  Domain
 | Auth | JWT Bearer + BCrypt |
 | Frontend | React 19, Vite, TypeScript, React Router, React Hook Form, Axios |
 | Tests | xUnit, Moq, Testcontainers.PostgreSql, WebApplicationFactory |
-| DevOps | Docker multi-stage, docker-compose, GitHub Actions (build + test) |
+| DevOps | Docker multi-stage, docker-compose, GitHub Actions (backend build + test + cobertura; frontend lint + build + `npm audit`) |
 
 ---
 
@@ -58,9 +61,12 @@ React SPA  --JWT Bearer-->  Api  -->  Application  -->  Domain
 git clone <URL_DEL_REPO>
 cd Asis   # o el nombre de la carpeta del clone
 
+cp .env.example .env   # valores de demo local (PowerShell: Copy-Item .env.example .env)
 docker compose down -v
 docker compose up --build -d
 ```
+
+Sin `.env`, `docker compose` se niega a arrancar porque `POSTGRES_PASSWORD` y `JWT_KEY` no tienen valor por defecto.
 
 Espera ~30–60 s a que Postgres esté healthy y la API aplique migraciones + seed.
 
@@ -83,6 +89,8 @@ Espera ~30–60 s a que Postgres esté healthy y la API aplique migraciones + se
 
 Categorías seed: `SERVIDORES`, `CLOUD`.
 
+> **Seguro por defecto:** el compose corre la API en modo **Production**, exige `POSTGRES_PASSWORD` y `JWT_KEY` sin valores por defecto, y deja apagados el usuario demo y Swagger. Solo el `.env` de demo (copiado de [`.env.example`](.env.example)) activa `SEED_DEFAULT_ADMIN=true` y `SWAGGER_ENABLED=true`. En un entorno compartido, inyecta secretos propios y no actives esos dos interruptores.
+
 ### Validación manual sugerida
 
 1. Abrir http://localhost:5173 → login con `admin` / `Admin123!`.
@@ -103,7 +111,7 @@ docker compose down -v
 ## Desarrollo local (sin contenedor de app)
 
 ```bash
-# Solo DB
+# Solo DB (requiere el .env de demo en la raíz)
 docker compose up -d postgres
 
 # API
@@ -123,15 +131,18 @@ npm run dev
 
 ## Tests
 
-Requiere **Docker** en ejecución (Testcontainers levanta PostgreSQL).
+Las pruebas de integración requieren **Docker** en ejecución y accesible para el usuario actual (Testcontainers levanta PostgreSQL). Si Docker no está disponible fallan con un mensaje explícito; los unitarios no lo necesitan.
 
 ```bash
 cd backend
-dotnet test Asisya.Catalog.sln
+dotnet test Asisya.Catalog.sln                 # todo (unitarios + integración)
+dotnet test tests/Asisya.Application.Tests     # solo unitarios, sin Docker
 ```
 
+Si el build falla sin diagnóstico por archivos bloqueados (procesos `dotnet` de otra sesión), ejecuta `dotnet build-server shutdown` y reintenta.
+
 - Unitarios: `Asisya.Application.Tests` (Moq)
-- Integración: `Asisya.Api.Tests` (Testcontainers + `WebApplicationFactory`) — flujo login → Category → Product CRUD + 401 sin JWT
+- Integración: `Asisya.Api.Tests` (Testcontainers + `WebApplicationFactory`) — flujo login → Category → Product CRUD, 401 sin JWT en lecturas y escrituras, 409/400 en validaciones, cabeceras de seguridad y verificación de que las migraciones crean el índice trigram
 
 CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (push/PR a `main`).
 
@@ -143,10 +154,10 @@ CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (push/PR a `main`).
 |--------|------|------|-------------|
 | `POST` | `/auth/login` | No | Obtiene JWT (`admin` / `Admin123!`) |
 | `GET` | `/health` | No | Health check (Postgres) |
-| `GET` | `/Category` | No | Lista categorías |
-| `POST` | `/Category` | JWT | Crea categoría (`name`, `description?`, `photoUrl`) |
-| `GET` | `/Products` | No | Listado paginado (`page`, `pageSize`, `categoryId`, `search`) |
-| `GET` | `/Products/{id}` | No | Detalle + `categoryPhotoUrl` |
+| `GET` | `/Category` | JWT | Lista categorías |
+| `POST` | `/Category` | JWT | Crea categoría (`name`, `description?`, `photoUrl` http(s) absoluta). 409 si el nombre existe |
+| `GET` | `/Products` | JWT | Listado paginado (`page`, `pageSize` ≤ 100, `categoryId`, `search`) |
+| `GET` | `/Products/{id}` | JWT | Detalle + `categoryPhotoUrl` |
 | `POST` | `/Product` | JWT | Crear individual **o** bulk si `count > 1` |
 | `PUT` | `/Product/{id}` | JWT | Actualizar producto |
 | `DELETE` | `/Product/{id}` | JWT | Eliminar producto |
@@ -198,11 +209,25 @@ Cómo se escalaría esta solución (sin implementarlo todo en el MVP):
 
 ## Secretos y seguridad del repo
 
-- Placeholders en compose / `appsettings.json`: `CHANGE_ME_IN_PRODUCTION` (password DB) y `CHANGE_ME_IN_PRODUCTION_USE_A_LONG_SECRET_32PLUS` (JWT).
+- El compose no trae secretos: los toma del entorno o de `.env` (ignorado por git). `.env.example` y `appsettings.json` solo tienen placeholders de demo (`CHANGE_ME_IN_PRODUCTION…`).
 - Usuario demo `admin` / `Admin123!` es **seed de prueba**, no un secreto de producción.
 - [`.gitignore`](.gitignore) excluye `bin/`, `obj/`, `node_modules/`, `dist/`, `.env` y overrides locales. Se versiona `.env.example`.
 
 En un entorno real: inyectar secretos por variables de entorno / secret manager y rotar JWT y passwords.
+
+### Controles de seguridad implementados
+
+- **Todas las rutas del catálogo requieren JWT**, lecturas incluidas. La SPA solo muestra productos tras login, así que la API se alinea con ese AuthGuard. Solo `/auth/login` y `/health` son anónimos.
+- JWT validado completo (issuer, audience, firma, expiración; clave ≥ 32 bytes verificada al arrancar). Passwords con **BCrypt**. **Rate limit** de 10 intentos/min por IP en login.
+- Problem Details sin stack traces; los errores 500 se registran en el servidor y el cliente recibe un mensaje genérico.
+- Cabeceras: API (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, HSTS fuera de Development); SPA en nginx con **Content-Security-Policy** estricta (`script-src 'self'`, `connect-src` limitado a la API, `frame-ancestors 'none'`).
+- PostgreSQL publicado solo en `127.0.0.1` en el compose.
+
+### Limitaciones conocidas (fuera del alcance del MVP)
+
+- **TLS**: la API escucha HTTP; en cloud el TLS termina en el load balancer / ingress (HSTS ya se emite cuando la petición llega por HTTPS).
+- **Roles**: el enunciado no los pide; cualquier usuario autenticado puede escribir. Siguiente paso: claim `role` + `[Authorize(Roles = "admin")]` en escrituras.
+- **JWT en `localStorage`** (lo pide el enunciado): un XSS podría leerlo. Se mitiga con la CSP y con React, que escapa el contenido por defecto; en producción se preferiría una cookie `HttpOnly` + `SameSite` con refresh token.
 
 ---
 
@@ -250,6 +275,8 @@ En un entorno real: inyectar secretos por variables de entorno / secret manager 
     └── src/
         ├── api/
         ├── auth/
+        ├── components/
+        ├── hooks/
         └── pages/
 ```
 

@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Asisya.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("Category")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
 public sealed class CategoryController : ControllerBase
 {
     private readonly CategoryService _categories;
@@ -26,10 +28,9 @@ public sealed class CategoryController : ControllerBase
 
     /// <summary>Creates a category. Name must be unique; photo URL is required.</summary>
     [HttpPost]
-    [Authorize]
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreateCategoryDto request, CancellationToken cancellationToken)
     {
         var created = await _categories.CreateAsync(request, cancellationToken);

@@ -6,7 +6,8 @@ namespace Asisya.Api.Errors;
 
 /// <summary>
 /// Maps application exceptions to RFC 7807 Problem Details. Unexpected errors are logged
-/// and returned as a generic 500 so internals never leak to clients.
+/// and returned as a generic 500 so internals never leak to clients. The framework's own
+/// ExceptionHandlerMiddleware logger is silenced in appsettings to avoid logging handled 4xx as errors.
 /// </summary>
 public sealed class ApiExceptionHandler : IExceptionHandler
 {
@@ -25,6 +26,7 @@ public sealed class ApiExceptionHandler : IExceptionHandler
         {
             BusinessException ex => (StatusCodes.Status400BadRequest, "Business rule violation", ex.Message),
             NotFoundException ex => (StatusCodes.Status404NotFound, "Resource not found", ex.Message),
+            ConflictException ex => (StatusCodes.Status409Conflict, "Resource conflict", ex.Message),
             _ => (StatusCodes.Status500InternalServerError, "Server error", "An unexpected error occurred.")
         };
 

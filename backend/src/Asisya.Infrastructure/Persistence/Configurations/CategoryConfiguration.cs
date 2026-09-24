@@ -10,10 +10,10 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
     {
         builder.ToTable("categories");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Name).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(Category.NameMaxLength).IsRequired();
         builder.HasIndex(x => x.Name).IsUnique();
-        builder.Property(x => x.Description).HasMaxLength(500);
-        builder.Property(x => x.PhotoUrl).HasMaxLength(512).IsRequired();
+        builder.Property(x => x.Description).HasMaxLength(Category.DescriptionMaxLength);
+        builder.Property(x => x.PhotoUrl).HasMaxLength(Category.PhotoUrlMaxLength).IsRequired();
         builder.Property(x => x.CreatedAtUtc).IsRequired();
     }
 }

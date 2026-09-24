@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { api } from '../api/client'
+import { getApiErrorMessage } from '../api/errors'
 import type { CategoryDto, ProductDetailDto, ProductFormValues } from '../api/types'
+
+const NAME_MAX_LENGTH = 200
+const DESCRIPTION_MAX_LENGTH = 1000
 
 export function ProductFormPage() {
   const { id } = useParams()
@@ -30,14 +34,13 @@ export function ProductFormPage() {
     api
       .get<CategoryDto[]>('/Category')
       .then((res) => setCategories(res.data))
-      .catch(() => setError('No se pudieron cargar las categorías.'))
+      .catch((err: unknown) => setError(getApiErrorMessage(err, 'No se pudieron cargar las categorías.')))
   }, [])
 
   useEffect(() => {
     if (!id) {
       return
     }
-    setLoading(true)
     api
       .get<ProductDetailDto>(`/Products/${id}`)
       .then((res) => {
@@ -49,7 +52,7 @@ export function ProductFormPage() {
           categoryId: res.data.categoryId,
         })
       })
-      .catch(() => setError('No se pudo cargar el producto.'))
+      .catch((err: unknown) => setError(getApiErrorMessage(err, 'No se pudo cargar el producto.')))
       .finally(() => setLoading(false))
   }, [id, reset])
 
@@ -70,8 +73,8 @@ export function ProductFormPage() {
         await api.post('/Product', payload)
       }
       navigate('/products')
-    } catch {
-      setError(isEdit ? 'No se pudo actualizar el producto.' : 'No se pudo crear el producto.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, isEdit ? 'No se pudo actualizar el producto.' : 'No se pudo crear el producto.'))
     }
   }
 
@@ -86,23 +89,54 @@ export function ProductFormPage() {
         </div>
       </header>
 
-      {loading && <p className="muted">Cargando…</p>}
-      {error && <p className="error">{error}</p>}
+      {loading && (
+        <p className="muted" role="status">
+          Cargando…
+        </p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       {!loading && (
-        <form className="card form" onSubmit={handleSubmit(onSubmit)}>
+        <form className="card form" onSubmit={handleSubmit(onSubmit)} noValidate>
           <label>
             Nombre
             <input
-              {...register('name', { required: 'El nombre es obligatorio' })}
+              {...register('name', {
+                validate: (v) => v.trim().length > 0 || 'El nombre es obligatorio',
+                maxLength: { value: NAME_MAX_LENGTH, message: `Máximo ${NAME_MAX_LENGTH} caracteres` },
+              })}
+              maxLength={NAME_MAX_LENGTH}
               placeholder="Nombre del producto"
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? 'name-error' : undefined}
             />
-            {errors.name && <span className="error">{errors.name.message}</span>}
+            {errors.name && (
+              <span id="name-error" className="error">
+                {errors.name.message}
+              </span>
+            )}
           </label>
 
           <label>
             Descripción
-            <textarea {...register('description')} rows={3} />
+            <textarea
+              {...register('description', {
+                maxLength: { value: DESCRIPTION_MAX_LENGTH, message: `Máximo ${DESCRIPTION_MAX_LENGTH} caracteres` },
+              })}
+              maxLength={DESCRIPTION_MAX_LENGTH}
+              rows={3}
+              aria-invalid={errors.description ? true : undefined}
+              aria-describedby={errors.description ? 'description-error' : undefined}
+            />
+            {errors.description && (
+              <span id="description-error" className="error">
+                {errors.description.message}
+              </span>
+            )}
           </label>
 
           <label>
@@ -110,13 +144,20 @@ export function ProductFormPage() {
             <input
               type="number"
               step="0.01"
+              min="0.01"
+              inputMode="decimal"
               {...register('price', {
-                required: 'El precio es obligatorio',
                 valueAsNumber: true,
-                validate: (v) => v > 0 || 'El precio debe ser mayor que 0',
+                validate: (v) => (Number.isFinite(v) && v > 0) || 'El precio debe ser mayor que 0',
               })}
+              aria-invalid={errors.price ? true : undefined}
+              aria-describedby={errors.price ? 'price-error' : undefined}
             />
-            {errors.price && <span className="error">{errors.price.message}</span>}
+            {errors.price && (
+              <span id="price-error" className="error">
+                {errors.price.message}
+              </span>
+            )}
           </label>
 
           <label>
@@ -124,19 +165,28 @@ export function ProductFormPage() {
             <input
               type="number"
               step="1"
+              min="0"
+              inputMode="numeric"
               {...register('stock', {
-                required: 'El stock es obligatorio',
                 valueAsNumber: true,
-                validate: (v) => v >= 0 || 'El stock no puede ser negativo',
+                validate: (v) => (Number.isInteger(v) && v >= 0) || 'El stock debe ser un entero mayor o igual a 0',
               })}
+              aria-invalid={errors.stock ? true : undefined}
+              aria-describedby={errors.stock ? 'stock-error' : undefined}
             />
-            {errors.stock && <span className="error">{errors.stock.message}</span>}
+            {errors.stock && (
+              <span id="stock-error" className="error">
+                {errors.stock.message}
+              </span>
+            )}
           </label>
 
           <label>
             Categoría
             <select
               {...register('categoryId', { required: 'La categoría es obligatoria' })}
+              aria-invalid={errors.categoryId ? true : undefined}
+              aria-describedby={errors.categoryId ? 'category-error' : undefined}
             >
               <option value="">Selecciona…</option>
               {categories.map((c) => (
@@ -145,7 +195,11 @@ export function ProductFormPage() {
                 </option>
               ))}
             </select>
-            {errors.categoryId && <span className="error">{errors.categoryId.message}</span>}
+            {errors.categoryId && (
+              <span id="category-error" className="error">
+                {errors.categoryId.message}
+              </span>
+            )}
           </label>
 
           <button type="submit" disabled={isSubmitting}>

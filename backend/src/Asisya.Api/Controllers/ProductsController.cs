@@ -1,11 +1,14 @@
 using Asisya.Application.Common;
 using Asisya.Application.Products;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Asisya.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("Products")]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
 public sealed class ProductsController : ControllerBase
 {
     private readonly ProductService _products;

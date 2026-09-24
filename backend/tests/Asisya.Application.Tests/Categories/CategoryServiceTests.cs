@@ -79,13 +79,35 @@ public sealed class CategoryServiceTests : IDisposable
             _sut.CreateAsync(new CreateCategoryDto { Name = "CLOUD", PhotoUrl = "" }));
     }
 
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("/relative/photo.png")]
+    [InlineData("ftp://cdn.example.com/x.png")]
+    [InlineData("javascript:alert(1)")]
+    public async Task CreateAsync_WhenPhotoUrlInvalid_ThrowsBusinessException(string photoUrl)
+    {
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            _sut.CreateAsync(new CreateCategoryDto { Name = "CLOUD", PhotoUrl = photoUrl }));
+    }
+
     [Fact]
-    public async Task CreateAsync_WhenDuplicateName_ThrowsBusinessException()
+    public async Task CreateAsync_WhenNameTooLong_ThrowsBusinessException()
+    {
+        await Assert.ThrowsAsync<BusinessException>(() =>
+            _sut.CreateAsync(new CreateCategoryDto
+            {
+                Name = new string('A', Category.NameMaxLength + 1),
+                PhotoUrl = "https://cdn.example.com/x.png"
+            }));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenDuplicateName_ThrowsConflictException()
     {
         _categories.Setup(x => x.ExistsByNameAsync("CLOUD", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var ex = await Assert.ThrowsAsync<BusinessException>(() =>
+        var ex = await Assert.ThrowsAsync<ConflictException>(() =>
             _sut.CreateAsync(new CreateCategoryDto
             {
                 Name = "CLOUD",

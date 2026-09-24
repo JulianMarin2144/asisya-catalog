@@ -1,7 +1,9 @@
 using Asisya.Application.Abstractions;
+using Asisya.Application.Common;
 using Asisya.Domain.Entities;
 using Asisya.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Asisya.Infrastructure.Persistence.Repositories;
 
@@ -40,6 +42,16 @@ public sealed class CategoryRepository : ICategoryRepository
     public async Task AddAsync(Category category, CancellationToken cancellationToken = default) =>
         await _db.Categories.AddAsync(category, cancellationToken);
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        _db.SaveChangesAsync(cancellationToken);
+    // The name pre-check can race with a concurrent insert; the unique index is the final guard.
+    public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConflictException("A category with the same name already exists.");
+        }
+    }
 }

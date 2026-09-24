@@ -86,6 +86,21 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
+// TLS is terminated at the reverse proxy / load balancer; HSTS only applies to HTTPS requests.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers.XContentTypeOptions = "nosniff";
+    headers.XFrameOptions = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    await next();
+});
+
 await DbSeeder.SeedAsync(app.Services);
 
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
