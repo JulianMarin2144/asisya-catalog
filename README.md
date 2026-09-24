@@ -87,16 +87,18 @@ Espera ~30–60 s a que Postgres esté healthy y la API aplique migraciones + se
 |---------|----------|
 | `admin` | `Admin123!` |
 
-Categorías seed: `SERVIDORES`, `CLOUD`.
+Categorías seed: `SERVIDORES`, `CLOUD`. Se crean al arrancar para que la carga masiva y el formulario de productos funcionen desde el primer minuto. Por eso un `POST /Category` con esos nombres responde **409 (ya existe)**, que es el comportamiento esperado. Para probar la creación de categorías vía API, usa otro nombre (ver [ejemplo](#ejemplo-login--crear-categoría)).
+
+La base arranca **sin productos**; los 100.000 se generan con la [carga masiva](#carga-masiva-100000-productos).
 
 > **Seguro por defecto:** el compose corre la API en modo **Production**, exige `POSTGRES_PASSWORD` y `JWT_KEY` sin valores por defecto, y deja apagados el usuario demo y Swagger. Solo el `.env` de demo (copiado de [`.env.example`](.env.example)) activa `SEED_DEFAULT_ADMIN=true` y `SWAGGER_ENABLED=true`. En un entorno compartido, inyecta secretos propios y no actives esos dos interruptores.
 
 ### Validación manual sugerida
 
-1. Abrir http://localhost:5173 → login con `admin` / `Admin123!`.
-2. Crear un producto, verlo en el listado, editarlo, eliminarlo.
-3. Sin token, `/products` redirige a `/login`.
-4. Opcional: Swagger o curl para bulk (sección Carga masiva).
+1. Ejecutar la [carga masiva](#carga-masiva-100000-productos) de 100.000 productos (Swagger: `POST /auth/login` → **Authorize** → `POST /Product` con `{"count":100000}`).
+2. Abrir http://localhost:5173 → login con `admin` / `Admin123!`.
+3. Buscar y filtrar por categoría sobre los 100.000 productos; crear, editar y eliminar uno.
+4. Sin token, `/products` redirige a `/login`.
 
 ### Parar
 
@@ -242,6 +244,7 @@ En un entorno real: inyectar secretos por variables de entorno / secret manager 
 | Mock “Mockito / Testcontainers” | Ecosistema .NET: **Moq + Testcontainers.PostgreSql** |
 | Puerto API 8080 | Contenedor en 8080; host **5192** por restricción frecuente de 8080 en Windows |
 | `GET /Category` | Añadido para poblar el select del frontend (no estaba explícito en el PDF) |
+| Categorías `SERVIDORES` / `CLOUD` vía API | `POST /Category` las crea sin problema, pero además se precargan al arrancar para que la carga masiva funcione sin pasos previos. Volver a crearlas responde 409 (duplicado) |
 | Entrega | Repo público + **correo nuevo** con **asunto = nombre completo** (instrucciones del proceso) |
 
 ---
